@@ -54,6 +54,11 @@ enum Op {
 
 const MEMORY_SIZE: usize = 4096;
 
+const SCREEN_WIDTH: usize = 64;
+const SCREEN_HEIGHT: usize = 32;
+
+type Pixels = [bool; SCREEN_WIDTH * SCREEN_HEIGHT];
+
 struct Interpreter {
     memory_map: [u8; MEMORY_SIZE],
     _program_size: usize,
@@ -63,19 +68,22 @@ struct Interpreter {
     stack: [u16; 16],
 
     registers: [u8; 16], // also called Vx
+    // TODO: Is it possible in rust to make `vf` look like a field, even though it would be a method that maps back to these registers? e.g. (self.vf = 5) or (x = self.vf) would both work
     index_register: u16, // usually only stores lowest 12 bits, for memory addresses
+
+    pixels: Pixels,
 
     /// "hardware" abstractions
     /// input: for the keyboard. represents whether key i is pressed
     keys: [bool; 16],
-    /// screen: represents whether pixel[row][col] is active
-    screen: [[bool; 64]; 32], // 64 wide x 32 tall, in pixels
+    /// screen: renders the pixels
+    screen: Screen,
 }
 
 const PROGRAM_START: usize = 512; // TODO: why did I think this was 256?
 
 impl Interpreter {
-    fn new() -> Self {
+    fn new(screen: Screen) -> Self {
         // initialize memory map
         Interpreter {
             memory_map: [0; 4096],
@@ -89,8 +97,10 @@ impl Interpreter {
             program_counter: PROGRAM_START as u16,
             stack_pointer: 0,
 
+            pixels: [false; 64 * 32],
+
             keys: [false; 16],
-            screen: [[false; 64]; 32],
+            screen,
         }
     }
 
@@ -143,11 +153,11 @@ impl Interpreter {
         let fourth_nibble = ((0x000F as u16) & instruction) as u4;
 
         let twelve_bits: u12 = (0x0FFF as u16) & instruction;
-        // println!(
-        //     "instruction: {:#06x}, first_nibble: {:#03x}, twelve_bits: {:#05x}",
-        //     instruction, first_nibble, twelve_bits
-        // );
-        let second_byte = (((0x0F00 as u16) & instruction) >> 8) as u8;
+        let second_byte = ((0x00FF as u16) & instruction) as u8;
+        println!(
+            "instruction: {:#06x}, as nibbles: {:#03x} {:#03x} {:#03x} {:#03x}, second byte: {:#04x}, twelve_bits: {:#05x}",
+            instruction, first_nibble, second_nibble, third_nibble, fourth_nibble, second_byte, twelve_bits
+        );
         match first_nibble {
             0 => match instruction {
                 0x00E0 => Op::CLS,
@@ -241,7 +251,7 @@ impl Interpreter {
 
     fn execute(&mut self, op: Op) -> Result<(), Error> {
         match op {
-            Op::CLS => println!("clear screen"),
+            Op::CLS => self.screen.clear_screen(),
             Op::RET => todo!(),
             Op::SYS { addr: _ } => (),
             Op::JP { addr } => {
@@ -272,8 +282,40 @@ impl Interpreter {
             }
             Op::RND { x, byte } => todo!(),
             Op::DRW { x, y, nibble } => {
-                // TODO: actually draw
-                println!("-> MOCK: draw");
+                let x = self.registers[x as usize];
+                let y = self.registers[y as usize];
+
+                // read nibble bytes from register addrs
+                let mut bytes_to_draw: Vec<u8> = vec![];
+                for i in 0..nibble {
+                    bytes_to_draw.push(self.memory_map[(self.index_register + i as u16) as usize]);
+                }
+
+                let min_row = y as usize;
+                let max_row = y as usize + bytes_to_draw.len() - 1;
+                for row_idx in min_row..=max_row {
+                    let b = bytes_to_draw[row_idx - y as usize];
+                    for bit_idx in (0..8).rev() {
+                        let pixel_on = (b & 0x1 << bit_idx) > 0;
+                        let pixel_pos = row_idx * SCREEN_WIDTH + x as usize + (7 - bit_idx);
+                        self.pixels[pixel_pos] = pixel_on;
+                        // TODO: handle collision flag
+                    }
+                }
+
+                // // to convert to pixels to draw
+                // let mut collision_flag = false;
+                // for b in bytes_to_draw {
+                //     for bit_idx in 7..=0 {
+                //         let pixel_on = (b & 0x1 << bit_idx) > 0;
+                //         self.pixels
+                //     }
+                // }
+                // if collision_flag {
+                //     // TODO: When does the overflow flag get set to false? Should I set to false if there's no overflow?
+                //     self.registers[0xf] = 0x1; // true
+                // }
+                self.screen.draw(self.pixels);
             }
             Op::SKP { x } => {
                 let is_key_pressed = self.keys[self.registers[x as usize] as usize];
@@ -304,9 +346,29 @@ impl Interpreter {
     }
 }
 
+struct Screen {}
+
+impl Screen {
+    pub fn new() -> Self {
+        Screen {}
+    }
+
+    fn clear_screen(&self) {
+        print!("{}[2J", 27 as char);
+    }
+
+    fn draw(&self, pixels: Pixels) {
+        println!("Screen:");
+        for row in pixels.chunks(SCREEN_WIDTH) {
+            let s: String = row.iter().map(|x| if *x { "#" } else { "." }).collect();
+            println!("{}", s);
+        }
+    }
+}
 const USAGE: &str = "usage: chip8-rust <file.ch8>";
 fn main() -> Result<(), Error> {
-    let mut interpreter = Interpreter::new();
+    let mut screen = Screen::new();
+    let mut interpreter = Interpreter::new(screen);
 
     // read program
     let rom = std::env::args().nth(1).expect(USAGE);
@@ -322,7 +384,14 @@ fn main() -> Result<(), Error> {
         let instruction = interpreter.fetch();
         let op = interpreter.decode(instruction);
         println!("op: {:?}", op);
+        println!("registers (before): {:?}", interpreter.registers);
         interpreter.execute(op)?;
+        println!("registers (after):  {:?}", interpreter.registers);
+
+        // TODO: simplify
+        println!("Press ENTER to continue...");
+        let buffer = &mut [0u8];
+        std::io::stdin().read_exact(buffer).unwrap();
     }
 
     println!("done");
