@@ -1,9 +1,13 @@
+mod font;
+
 use std::{
     env::args,
     fs::File,
     io::{BufReader, Error, Read},
     path::Path,
 };
+
+use font::FONT;
 
 // wrap u8 for now
 type u4 = u8;
@@ -80,13 +84,20 @@ struct Interpreter {
     screen: Screen,
 }
 
-const PROGRAM_START: usize = 512; // TODO: why did I think this was 256?
+const FONT_START: usize = 0x50;
+const PROGRAM_START: usize = 512;
 
 impl Interpreter {
     fn new(screen: Screen) -> Self {
         // initialize memory map
+        let mut memory_map = [0; 4096];
+        // write font
+        for (idx, c) in FONT.iter().enumerate() {
+            memory_map[FONT_START + idx] = *c;
+        }
+
         Interpreter {
-            memory_map: [0; 4096],
+            memory_map,
             _program_size: 0,
 
             stack: [0; 16],
