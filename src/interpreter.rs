@@ -5,6 +5,8 @@ use std::{
     time::Duration,
 };
 
+use rand::Rng;
+
 use crate::{font::FONT, screen::Screen, USAGE};
 
 // wrap u8 for now
@@ -23,7 +25,7 @@ enum Op {
     CALL { addr: u12 },
     SE { x: u4, byte: u8 },
     SNE { x: u4, byte: u8 },
-    SE2 { x: u4, y: u4 },
+    SE_VX_VY { x: u4, y: u4 },
     LD { x: u4, byte: u8 },
     ADD { x: u4, byte: u8 },
     LD_VX_VY { x: u4, y: u4 },
@@ -73,6 +75,9 @@ pub struct Interpreter {
     // TODO: Is it possible in rust to make `vf` look like a field, even though it would be a method that maps back to these registers? e.g. (self.vf = 5) or (x = self.vf) would both work
     index_register: u16, // usually only stores lowest 12 bits, for memory addresses
 
+    delay_timer: u8,
+    sound_timer: u8,
+
     pixels: Pixels,
 
     /// "hardware" abstractions
@@ -84,6 +89,7 @@ pub struct Interpreter {
 
 const FONT_START: usize = 0x50;
 const PROGRAM_START: usize = 512;
+const INSTRUCTIONS_PER_SEC: usize = 700;
 
 impl Interpreter {
     pub fn new(screen: Screen) -> Self {
@@ -106,6 +112,9 @@ impl Interpreter {
             program_counter: PROGRAM_START as u16,
             stack_pointer: 0,
 
+            delay_timer: 0,
+            sound_timer: 0,
+
             pixels: [false; 64 * 32],
 
             keys: [false; 16],
@@ -113,13 +122,12 @@ impl Interpreter {
         }
     }
 
-    pub fn main(&mut self, rom: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// runs a rom
+    pub fn run(&mut self, rom: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.read_program_from_file(rom)?;
         self.print_program();
 
         // run the program
-        // TODO: Consider instructions-per-sec
-        //  "In practice, a standard speed of around 700 CHIP-8 instructions per second fits well enough for most CHIP-8 programs you’ll find"
         while self.can_continue() {
             log::debug!("pc: {:?}", self.program_counter);
             let instruction = self.fetch();
@@ -129,8 +137,12 @@ impl Interpreter {
             self.execute(op)?;
             log::debug!("registers (after):  {:?}", self.registers);
 
+            // TODO: Consider instructions-per-sec
+            //  "In practice, a standard speed of around 700 CHIP-8 instructions per second fits well enough for most CHIP-8 programs you’ll find"
+            // Right now, this is 2 instructions-per-sec!
             sleep(Duration::new(0, 500_000_000));
 
+            //// The below allows step-by-step debugging.
             // println!("Press ENTER to continue...");
             // let buffer = &mut [0u8];
             // std::io::stdin().read_exact(buffer).unwrap();
@@ -214,7 +226,7 @@ impl Interpreter {
                 if fourth_nibble != 0 {
                     return Op::INVALID;
                 }
-                Op::SE2 {
+                Op::SE_VX_VY {
                     x: second_nibble,
                     y: third_nibble,
                 }
@@ -294,29 +306,100 @@ impl Interpreter {
                 log::debug!("jump to addr: {:#05x}", addr);
                 self.program_counter = addr;
             }
-            Op::CALL { addr } => todo!(),
-            Op::SE { x, byte } => todo!(),
-            Op::SNE { x, byte } => todo!(),
-            Op::SE2 { x, y } => todo!(),
+            Op::CALL { addr } => {
+                self.stack_pointer += 1;
+                self.stack[self.stack_pointer as usize] = self.program_counter;
+                self.program_counter = addr;
+            }
+            Op::SE { x, byte } => {
+                if self.registers[x as usize] == byte {
+                    self.program_counter += 2;
+                }
+            }
+            Op::SNE { x, byte } => {
+                if self.registers[x as usize] != byte {
+                    self.program_counter += 2;
+                }
+            }
+            Op::SE_VX_VY { x, y } => {
+                if self.registers[x as usize] == self.registers[y as usize] {
+                    self.program_counter += 2;
+                }
+            }
             Op::LD { x, byte } => self.registers[x as usize] = byte,
             Op::ADD { x, byte } => self.registers[x as usize] += byte,
             Op::LD_VX_VY { x, y } => self.registers[x as usize] = self.registers[y as usize],
-            Op::OR_VX_VY { x, y } => todo!(),
-            Op::AND_VX_VY { x, y } => todo!(),
-            Op::XOR_VX_VY { x, y } => todo!(),
-            Op::ADD_VX_VY { x, y } => todo!(),
-            Op::SUB_VX_VY { x, y } => todo!(),
-            Op::SHR_VX_VY { x, y } => todo!(),
-            Op::SUBN_VX_VY { x, y } => todo!(),
-            Op::SHL_VX_VY { x, y } => todo!(),
-            Op::SNE_VX_VY { x, y } => todo!(),
+            Op::OR_VX_VY { x, y } => {
+                self.registers[x as usize] = self.registers[x as usize] | self.registers[y as usize]
+            }
+            Op::AND_VX_VY { x, y } => {
+                self.registers[x as usize] = self.registers[x as usize] & self.registers[y as usize]
+            }
+            Op::XOR_VX_VY { x, y } => {
+                self.registers[x as usize] = self.registers[x as usize] ^ self.registers[y as usize]
+            }
+            Op::ADD_VX_VY { x, y } => {
+                let vx = self.registers[x as usize];
+                let vy = self.registers[y as usize];
+                let mut total = (vx + vy) as usize;
+                if total > 255 {
+                    total = total % 256;
+                    self.registers[0xf] = 0x1;
+                } else {
+                    self.registers[0xf] = 0x0;
+                }
+                self.registers[x as usize] = total as u8;
+            }
+            Op::SUB_VX_VY { x, y } => {
+                let vx = self.registers[x as usize];
+                let vy = self.registers[y as usize];
+                if vy > vx {
+                    self.registers[x as usize] = 0;
+                    self.registers[0xf] = 0x1;
+                } else {
+                    self.registers[x as usize] = vx - vy;
+                    self.registers[0xf] = 0x0;
+                }
+            }
+            Op::SHR_VX_VY { x, y: _ } => {
+                let vx = self.registers[x as usize];
+                let lsb_is_1 = (vx & 0b00000001).count_ones() == 1;
+                self.registers[x as usize] = vx >> 1;
+                self.registers[0xf] = if lsb_is_1 { 0x1 } else { 0x0 };
+            }
+            Op::SUBN_VX_VY { x, y } => {
+                let vx = self.registers[x as usize];
+                let vy = self.registers[y as usize];
+                if vx > vy {
+                    self.registers[x as usize] = 0;
+                    self.registers[0xf] = 0x1;
+                } else {
+                    self.registers[x as usize] = vy - vx;
+                    self.registers[0xf] = 0x0;
+                }
+            }
+            Op::SHL_VX_VY { x, y: _ } => {
+                let vx = self.registers[x as usize];
+                let msb_is_1 = (vx & 0b10000000).count_ones() == 1;
+                self.registers[x as usize] = vx >> 1;
+                self.registers[0xf] = if msb_is_1 { 0x1 } else { 0x0 };
+            }
+            Op::SNE_VX_VY { x, y } => {
+                if self.registers[x as usize] != self.registers[y as usize] {
+                    self.program_counter += 2;
+                }
+            }
             Op::LD_I { addr } => {
                 self.index_register = addr;
             }
             Op::JP_V0 { addr } => {
                 self.program_counter = addr + self.registers[0] as u16;
             }
-            Op::RND { x, byte } => todo!(),
+            Op::RND { x, byte } => {
+                let mut rng = rand::thread_rng();
+                let r = rng.gen::<u8>();
+                self.registers[x as usize] = r & byte;
+            }
             Op::DRW { x, y, nibble } => {
                 let x = self.registers[x as usize];
                 let y = self.registers[y as usize];
@@ -327,6 +410,7 @@ impl Interpreter {
                     bytes_to_draw.push(self.memory_map[(self.index_register + i as u16) as usize]);
                 }
 
+                let mut collision_flag = false;
                 let min_row = y as usize;
                 let max_row = y as usize + bytes_to_draw.len() - 1;
                 for row_idx in min_row..=max_row {
@@ -334,23 +418,17 @@ impl Interpreter {
                     for bit_idx in (0..8).rev() {
                         let pixel_on = (b & 0x1 << bit_idx) > 0;
                         let pixel_pos = row_idx * SCREEN_WIDTH + x as usize + (7 - bit_idx);
+                        if self.pixels[pixel_pos] && pixel_on {
+                            collision_flag = true;
+                        }
                         self.pixels[pixel_pos] = pixel_on;
-                        // TODO: handle collision flag
                     }
                 }
 
-                // // to convert to pixels to draw
-                // let mut collision_flag = false;
-                // for b in bytes_to_draw {
-                //     for bit_idx in 7..=0 {
-                //         let pixel_on = (b & 0x1 << bit_idx) > 0;
-                //         self.pixels
-                //     }
-                // }
-                // if collision_flag {
-                //     // TODO: When does the overflow flag get set to false? Should I set to false if there's no overflow?
-                //     self.registers[0xf] = 0x1; // true
-                // }
+                if collision_flag {
+                    // TODO: When does the overflow flag get set to false? Should I set to false if there's no overflow?
+                    self.registers[0xf] = 0x1; // true
+                }
                 self.screen.draw(self.pixels);
             }
             Op::SKP { x } => {
@@ -366,15 +444,36 @@ impl Interpreter {
                     self.program_counter += 2;
                 }
             }
-            Op::LD_VX_DT { x } => todo!(),
-            Op::LD_VX_K { x } => todo!(),
-            Op::LD_DT_VX { x } => todo!(),
-            Op::LD_ST_VX { x } => todo!(),
-            Op::ADD_I_VX { x } => todo!(),
-            Op::LD_F_VX { x } => todo!(),
-            Op::LD_B_VX { x } => todo!(),
-            Op::LD_I_VX { x } => todo!(),
-            Op::LD_VX_I { x } => todo!(),
+            Op::LD_VX_DT { x } => self.registers[x as usize] = self.delay_timer,
+            Op::LD_VX_K { x } => self.registers[x as usize] = 0, // TODO: pause execution.. wait for keypress then store which key is pressed
+            Op::LD_DT_VX { x } => self.delay_timer = self.registers[x as usize],
+            Op::LD_ST_VX { x } => self.sound_timer = self.registers[x as usize],
+            Op::ADD_I_VX { x } => {
+                self.index_register = self.registers[x as usize] as u16 + self.index_register
+            }
+            Op::LD_F_VX { x } => {
+                self.index_register = FONT_START as u16 + self.registers[x as usize] as u16;
+            }
+            Op::LD_B_VX { x } => {
+                let vx = self.registers[x as usize];
+                self.memory_map[self.index_register as usize] = (vx / 100) % 10;
+                self.memory_map[self.index_register as usize + 1] = (vx / 10) % 10;
+                self.memory_map[self.index_register as usize + 2] = vx % 10;
+            }
+            Op::LD_I_VX { x } => {
+                for idx in 0..=x {
+                    self.memory_map[(self.index_register + idx as u16) as usize] =
+                        self.registers[idx as usize];
+                }
+                self.index_register = self.index_register + x as u16 + 1;
+            }
+            Op::LD_VX_I { x } => {
+                for idx in 0..=x {
+                    self.registers[idx as usize] =
+                        self.memory_map[(self.index_register + idx as u16) as usize];
+                }
+                self.index_register = self.index_register + x as u16 + 1;
+            }
             Op::INVALID => todo!("this will aways fail"),
         }
 

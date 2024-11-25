@@ -18,5 +18,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     let screen = Screen::new();
     let mut interpreter = Interpreter::new(screen);
 
-    interpreter.main(&rom)
+    interpreter.run(&rom)
 }
