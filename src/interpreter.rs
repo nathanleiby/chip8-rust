@@ -2,12 +2,12 @@ use std::{
     fs::File,
     io::{Error, Read},
     thread::sleep,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use rand::Rng;
 
-use crate::{font::FONT, screen::Screen, USAGE};
+use crate::{font::FONT, screen::Screen};
 
 // wrap u8 for now
 type u4 = u8;
@@ -89,7 +89,8 @@ pub struct Interpreter {
 
 const FONT_START: usize = 0x50;
 const PROGRAM_START: usize = 512;
-const INSTRUCTIONS_PER_SEC: usize = 700;
+// const INSTRUCTIONS_PER_SEC: usize = 700;
+const INSTRUCTIONS_PER_SEC: usize = 20;
 
 impl Interpreter {
     pub fn new(screen: Screen) -> Self {
@@ -124,6 +125,8 @@ impl Interpreter {
 
     /// runs a rom
     pub fn run(&mut self, rom: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut last_tick = SystemTime::now();
+
         self.read_program_from_file(rom)?;
         self.print_program();
 
@@ -145,6 +148,15 @@ impl Interpreter {
                 0,
                 1_000_000_000 / INSTRUCTIONS_PER_SEC as u32,
             ));
+
+            let now = SystemTime::now();
+            let dur = now.duration_since(last_tick)?;
+            if dur > Duration::from_millis(1000 / 60) {
+                last_tick = now;
+                if self.delay_timer > 0 {
+                    self.delay_timer -= 1;
+                }
+            }
 
             //// The below allows step-by-step debugging.
             // println!("Press ENTER to continue...");
@@ -417,8 +429,8 @@ impl Interpreter {
                 self.registers[x as usize] = r & byte;
             }
             Op::DRW { x, y, nibble } => {
-                let x = self.registers[x as usize];
-                let y = self.registers[y as usize];
+                let vx = self.registers[x as usize];
+                let vy = self.registers[y as usize];
 
                 // read nibble bytes from register addrs
                 let mut bytes_to_draw: Vec<u8> = vec![];
@@ -427,17 +439,18 @@ impl Interpreter {
                 }
 
                 let mut collision_flag = false;
-                let min_row = y as usize;
-                let max_row = y as usize + bytes_to_draw.len() - 1;
+                let min_row = vy as usize;
+                let max_row = vy as usize + bytes_to_draw.len() - 1;
                 for row_idx in min_row..=max_row {
-                    let b = bytes_to_draw[row_idx - y as usize];
+                    let b = bytes_to_draw[row_idx - vy as usize];
                     for bit_idx in (0..8).rev() {
-                        let pixel_on = (b & 0x1 << bit_idx) > 0;
-                        let pixel_pos = row_idx * SCREEN_WIDTH + x as usize + (7 - bit_idx);
-                        if self.pixels[pixel_pos] && pixel_on {
+                        let pixel_pos = row_idx * SCREEN_WIDTH + vx as usize + (7 - bit_idx);
+                        let old_value = self.pixels[pixel_pos];
+                        let new_value = (b & 0x1 << bit_idx) > 0;
+                        if old_value && new_value {
                             collision_flag = true;
                         }
-                        self.pixels[pixel_pos] = pixel_on;
+                        self.pixels[pixel_pos] = old_value ^ new_value;
                     }
                 }
 
