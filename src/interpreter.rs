@@ -140,7 +140,11 @@ impl Interpreter {
             // TODO: Consider instructions-per-sec
             //  "In practice, a standard speed of around 700 CHIP-8 instructions per second fits well enough for most CHIP-8 programs you’ll find"
             // Right now, this is 2 instructions-per-sec!
-            sleep(Duration::new(0, 500_000_000));
+
+            sleep(Duration::new(
+                0,
+                1_000_000_000 / INSTRUCTIONS_PER_SEC as u32,
+            ));
 
             //// The below allows step-by-step debugging.
             // println!("Press ENTER to continue...");
@@ -300,7 +304,10 @@ impl Interpreter {
     fn execute(&mut self, op: Op) -> Result<(), Error> {
         match op {
             Op::CLS => self.screen.clear_screen(),
-            Op::RET => todo!(),
+            Op::RET => {
+                self.program_counter = self.stack[self.stack_pointer as usize];
+                self.stack_pointer -= 1;
+            }
             Op::SYS { addr: _ } => (),
             Op::JP { addr } => {
                 log::debug!("jump to addr: {:#05x}", addr);
@@ -327,7 +334,16 @@ impl Interpreter {
                 }
             }
             Op::LD { x, byte } => self.registers[x as usize] = byte,
-            Op::ADD { x, byte } => self.registers[x as usize] += byte,
+            Op::ADD { x, byte } => {
+                let vx = self.registers[x as usize];
+                let sum = vx as usize + byte as usize;
+                if sum > std::u8::MAX as usize {
+                    // NOTE: This instruction does NOT set the overflow register (vf)
+                    self.registers[x as usize] = std::u8::MAX;
+                } else {
+                    self.registers[x as usize] = sum as u8;
+                }
+            }
             Op::LD_VX_VY { x, y } => self.registers[x as usize] = self.registers[y as usize],
             Op::OR_VX_VY { x, y } => {
                 self.registers[x as usize] = self.registers[x as usize] | self.registers[y as usize]
@@ -341,7 +357,7 @@ impl Interpreter {
             Op::ADD_VX_VY { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
-                let mut total = (vx + vy) as usize;
+                let mut total = vx as usize + vy as usize;
                 if total > 255 {
                     total = total % 256;
                     self.registers[0xf] = 0x1;
