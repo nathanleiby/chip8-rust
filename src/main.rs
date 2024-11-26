@@ -15,21 +15,10 @@ use macroquad::{
     window::{next_frame, Conf},
 };
 
-pub const CARROT_ORANGE: Color = Color {
-    r: 247.0 / 255.0,
-    g: 152.0 / 255.0,
-    b: 36.0 / 255.0,
-    a: 1.0,
-};
-pub const GUNMETAL: Color = Color {
-    r: 49.0 / 255.0,
-    g: 57.0 / 255.0,
-    b: 60.0 / 255.0,
-    a: 1.0,
-};
+const SCALE: f32 = 16.;
 
-const WINDOW_WIDTH: f32 = 1366.0;
-const WINDOW_HEIGHT: f32 = 768.0;
+const WINDOW_WIDTH: f32 = 64. * SCALE;
+const WINDOW_HEIGHT: f32 = 32. * SCALE;
 
 fn conf() -> Conf {
     #[allow(clippy::cast_possible_truncation)]
@@ -42,8 +31,65 @@ fn conf() -> Conf {
     }
 }
 
-const SCALE: f32 = 16.;
-const INSTRUCTIONS_PER_STEP: usize = 5;
+const INSTRUCTIONS_PER_LOOP: usize = 5;
+
+fn capture_keyboard_input(interpreter: &mut Interpreter) {
+    for (idx, k) in [
+        // this order relates to the original layout of the Chip-8 Keyboard
+        KeyCode::X,    // 0
+        KeyCode::Key1, // 1
+        KeyCode::Key2, // 2
+        KeyCode::Key3, // 3
+        KeyCode::Q,    // 4
+        KeyCode::W,    // 5
+        KeyCode::E,    // 6
+        KeyCode::A,    // 7
+        KeyCode::S,    // 8
+        KeyCode::D,    // 9
+        KeyCode::Z,    // A
+        KeyCode::C,    // B
+        KeyCode::Key4, // C
+        KeyCode::R,    // D
+        KeyCode::F,    // E
+        KeyCode::V,    // F
+    ]
+    .iter()
+    .enumerate()
+    {
+        if is_key_down(*k) {
+            interpreter.set_key(idx, true);
+        } else {
+            interpreter.set_key(idx, false);
+        }
+    }
+}
+
+fn update_display(interpreter: &Interpreter, pixel_brightness: &mut [f32; 64 * 32]) {
+    for (idx, on) in interpreter.pixels().iter().enumerate() {
+        if *on {
+            pixel_brightness[idx] += 0.25;
+            pixel_brightness[idx] = clamp(pixel_brightness[idx], 0., 1.);
+        } else {
+            // fade out
+            pixel_brightness[idx] -= 0.05;
+            pixel_brightness[idx] = clamp(pixel_brightness[idx], 0., 1.);
+        }
+    }
+    for (idx, brightness) in pixel_brightness.iter().enumerate() {
+        let row = (idx / 64) as f32;
+        let col = (idx % 64) as f32;
+        let red = Color::from_hex(0xA4193D);
+        let tan = Color::from_hex(0xFFDFB9);
+        let color = Color::from_rgba(
+            ((red.r * brightness + tan.r * (1. - brightness)) / 2. * 255.) as u8,
+            ((red.g * brightness + tan.g * (1. - brightness)) / 2. * 255.) as u8,
+            ((red.b * brightness + tan.b * (1. - brightness)) / 2. * 255.) as u8,
+            255,
+        );
+
+        draw_rectangle(col * SCALE, row * SCALE, 1.0 * SCALE, 1.0 * SCALE, color);
+    }
+}
 
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -51,13 +97,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // read program
     let rom = std::env::args().nth(1).expect(USAGE);
-    // TODO: keyboard?
     // TODO: sound?
 
     let mut interpreter = Interpreter::new();
     interpreter.read_program_from_file(&rom)?;
 
     // let mut should_step = false;
+
+    let mut pixel_brightness: [f32; 64 * 32] = [0.; 64 * 32];
 
     loop {
         if is_key_down(KeyCode::LeftShift) && is_key_released(KeyCode::Escape) {
@@ -69,48 +116,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         //     should_step = true;
         // }
 
-        for (idx, k) in [
-            // this order relates to the original layout of the Chip-8 Keyboard
-            KeyCode::X,    // 0
-            KeyCode::Key1, // 1
-            KeyCode::Key2, // 2
-            KeyCode::Key3, // 3
-            KeyCode::Q,    // 4
-            KeyCode::W,    // 5
-            KeyCode::E,    // 6
-            KeyCode::A,    // 7
-            KeyCode::S,    // 8
-            KeyCode::D,    // 9
-            KeyCode::Z,    // A
-            KeyCode::C,    // B
-            KeyCode::Key4, // C
-            KeyCode::R,    // D
-            KeyCode::F,    // E
-            KeyCode::V,    // F
-        ]
-        .iter()
-        .enumerate()
-        {
-            if is_key_down(*k) {
-                interpreter.set_key(idx, true);
-            } else {
-                interpreter.set_key(idx, false);
-            }
-        }
+        // expose current state (visuals, audio)
+        update_display(&interpreter, &mut pixel_brightness);
+        // TODO: play sound, if appropriate
 
-        for (idx, on) in interpreter.pixels().iter().enumerate() {
-            let row = (idx / 64) as f32;
-            let col = (idx % 64) as f32;
-            let color = if *on {
-                // Color32::from_rgb(1, 0, 0)
-                RED
-            } else {
-                BLUE
-            };
-            draw_rectangle(col * SCALE, row * SCALE, 1.0 * SCALE, 1.0 * SCALE, color);
-        }
+        // capture changes
+        capture_keyboard_input(&mut interpreter);
+        interpreter.decrement_timers(); // assumes game loop is running at approx 60fps
 
-        for _ in 0..INSTRUCTIONS_PER_STEP {
+        for _ in 0..INSTRUCTIONS_PER_LOOP {
             // if should_step {
             interpreter.step()?;
             // should_step = false;

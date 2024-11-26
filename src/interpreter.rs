@@ -129,14 +129,17 @@ impl Interpreter {
         self.execute(op)?;
         log::debug!("registers (after):  {:?}", self.registers);
 
+        Ok(())
+    }
+
+    /// this should be called 60 times per second (60 Hz)
+    pub fn decrement_timers(&mut self) {
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
         }
         if self.sound_timer > 0 {
             self.sound_timer -= 1;
         }
-
-        Ok(())
     }
 
     /// Reads a program from a file and writes it into the memory_map
