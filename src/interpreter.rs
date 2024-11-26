@@ -420,7 +420,9 @@ impl Interpreter {
             Op::LdStVx { x } => self.sound_timer = self.registers[x as usize],
             Op::AddIVx { x } => self.index_register += self.registers[x as usize] as u16,
             Op::LdFVx { x } => {
-                self.index_register = FONT_START as u16 + self.registers[x as usize] as u16;
+                let bytes_per_letter = 5;
+                self.index_register =
+                    FONT_START as u16 + (self.registers[x as usize] * bytes_per_letter) as u16;
             }
             Op::LdBVx { x } => {
                 let vx = self.registers[x as usize];
