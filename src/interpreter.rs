@@ -1,13 +1,8 @@
-use std::{
-    fs::File,
-    io::{Error, Read},
-    thread::sleep,
-    time::{Duration, SystemTime},
-};
+use std::{error::Error, fs::File, io::Read};
 
 use rand::Rng;
 
-use crate::{font::FONT, screen::Screen};
+use crate::font::FONT;
 
 // wrap u8 for now
 type u4 = u8;
@@ -78,22 +73,17 @@ pub struct Interpreter {
     delay_timer: u8,
     sound_timer: u8,
 
-    pixels: Pixels,
-
     /// "hardware" abstractions
     /// input: for the keyboard. represents whether key i is pressed
     keys: [bool; 16],
-    /// screen: renders the pixels
-    screen: Screen,
+    pixels: Pixels,
 }
 
 const FONT_START: usize = 0x50;
 const PROGRAM_START: usize = 512;
-// const INSTRUCTIONS_PER_SEC: usize = 700;
-const INSTRUCTIONS_PER_SEC: usize = 20;
 
 impl Interpreter {
-    pub fn new(screen: Screen) -> Self {
+    pub fn new() -> Self {
         // initialize memory map
         let mut memory_map = [0; 4096];
         // write font
@@ -119,60 +109,39 @@ impl Interpreter {
             pixels: [false; 64 * 32],
 
             keys: [false; 16],
-            screen,
         }
     }
 
-    /// runs a rom
-    pub fn run(&mut self, rom: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let mut last_tick = SystemTime::now();
+    pub fn set_key(&mut self, key_idx: usize, is_down: bool) {
+        self.keys[key_idx] = is_down;
+    }
 
-        self.read_program_from_file(rom)?;
-        self.print_program();
-
-        // run the program
-        while self.can_continue() {
-            log::debug!("pc: {:?}", self.program_counter);
-            let instruction = self.fetch();
-            let op = self.decode(instruction);
-            log::debug!("op: {:?}", op);
-            log::debug!("registers (before): {:?}", self.registers);
-            self.execute(op)?;
-            log::debug!("registers (after):  {:?}", self.registers);
-
-            // TODO: Consider instructions-per-sec
-            //  "In practice, a standard speed of around 700 CHIP-8 instructions per second fits well enough for most CHIP-8 programs you’ll find"
-            // Right now, this is 2 instructions-per-sec!
-
-            sleep(Duration::new(
-                0,
-                1_000_000_000 / INSTRUCTIONS_PER_SEC as u32,
-            ));
-
-            let now = SystemTime::now();
-            let dur = now.duration_since(last_tick)?;
-            if dur > Duration::from_millis(1000 / 60) {
-                last_tick = now;
-                if self.delay_timer > 0 {
-                    self.delay_timer -= 1;
-                }
-                if self.sound_timer > 0 {
-                    self.sound_timer -= 1;
-                }
-            }
-
-            //// The below allows step-by-step debugging.
-            // println!("Press ENTER to continue...");
-            // let buffer = &mut [0u8];
-            // std::io::stdin().read_exact(buffer).unwrap();
+    pub fn step(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.can_continue() {
+            // exit early
+            return Ok(());
         }
 
-        log::debug!("done");
+        log::debug!("pc: {:?}", self.program_counter);
+        let instruction = self.fetch();
+        let op = self.decode(instruction);
+        log::debug!("op: {:?}", op);
+        log::debug!("registers (before): {:?}", self.registers);
+        self.execute(op)?;
+        log::debug!("registers (after):  {:?}", self.registers);
+
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
+
         Ok(())
     }
 
     /// Reads a program from a file and writes it into the memory_map
-    fn read_program_from_file(&mut self, p: &str) -> Result<(), Error> {
+    pub fn read_program_from_file(&mut self, p: &str) -> Result<(), Box<dyn Error>> {
         let mut file = File::open(p)?;
 
         let mut buffer = [0 as u8; 4096 - 512];
@@ -182,6 +151,10 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    pub fn pixels(&self) -> Pixels {
+        self.pixels
     }
 
     fn can_continue(&self) -> bool {
@@ -316,9 +289,13 @@ impl Interpreter {
         }
     }
 
-    fn execute(&mut self, op: Op) -> Result<(), Error> {
+    fn execute(&mut self, op: Op) -> Result<(), Box<dyn Error>> {
         match op {
-            Op::CLS => self.screen.clear_screen(),
+            Op::CLS => {
+                for i in 0..self.pixels.len() {
+                    self.pixels[i] = false;
+                }
+            }
             Op::RET => {
                 self.program_counter = self.stack[self.stack_pointer as usize];
                 self.stack_pointer -= 1;
@@ -334,30 +311,30 @@ impl Interpreter {
                 self.program_counter = addr;
             }
             Op::SE { x, byte } => {
-                if self.registers[x as usize] == byte {
+                let vx = self.registers[x as usize];
+                if vx == byte {
                     self.program_counter += 2;
                 }
             }
             Op::SNE { x, byte } => {
-                if self.registers[x as usize] != byte {
+                let vx = self.registers[x as usize];
+                if vx != byte {
                     self.program_counter += 2;
                 }
             }
             Op::SE_VX_VY { x, y } => {
-                if self.registers[x as usize] == self.registers[y as usize] {
+                let vx = self.registers[x as usize];
+                let vy = self.registers[y as usize];
+                if vx == vy {
                     self.program_counter += 2;
                 }
             }
             Op::LD { x, byte } => self.registers[x as usize] = byte,
             Op::ADD { x, byte } => {
                 let vx = self.registers[x as usize];
-                let sum = vx as usize + byte as usize;
-                if sum > std::u8::MAX as usize {
-                    // NOTE: This instruction does NOT set the overflow register (vf)
-                    self.registers[x as usize] = std::u8::MAX;
-                } else {
-                    self.registers[x as usize] = sum as u8;
-                }
+                let (total, _) = vx.overflowing_add(byte);
+                // NOTE: This instruction does NOT set the overflow register (vf)
+                self.registers[x as usize] = total;
             }
             Op::LD_VX_VY { x, y } => self.registers[x as usize] = self.registers[y as usize],
             Op::OR_VX_VY { x, y } => {
@@ -372,25 +349,18 @@ impl Interpreter {
             Op::ADD_VX_VY { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
-                let mut total = vx as usize + vy as usize;
-                if total > 255 {
-                    total = total % 256;
-                    self.registers[0xf] = 0x1;
-                } else {
-                    self.registers[0xf] = 0x0;
-                }
-                self.registers[x as usize] = total as u8;
+                let (total, overflow) = vx.overflowing_add(vy);
+
+                self.registers[0xf] = overflow as u8;
+                self.registers[x as usize] = total;
             }
             Op::SUB_VX_VY { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
-                if vy > vx {
-                    self.registers[x as usize] = 0;
-                    self.registers[0xf] = 0x1;
-                } else {
-                    self.registers[x as usize] = vx - vy;
-                    self.registers[0xf] = 0x0;
-                }
+
+                let (total, overflow) = vx.overflowing_sub(vy);
+                self.registers[x as usize] = total;
+                self.registers[0xf] = !overflow as u8;
             }
             Op::SHR_VX_VY { x, y: _ } => {
                 let vx = self.registers[x as usize];
@@ -401,18 +371,15 @@ impl Interpreter {
             Op::SUBN_VX_VY { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
-                if vx > vy {
-                    self.registers[x as usize] = 0;
-                    self.registers[0xf] = 0x1;
-                } else {
-                    self.registers[x as usize] = vy - vx;
-                    self.registers[0xf] = 0x0;
-                }
+
+                let (total, overflow) = vy.overflowing_sub(vx);
+                self.registers[x as usize] = total;
+                self.registers[0xf] = !overflow as u8;
             }
             Op::SHL_VX_VY { x, y: _ } => {
                 let vx = self.registers[x as usize];
                 let msb_is_1 = (vx & 0b10000000).count_ones() == 1;
-                self.registers[x as usize] = vx >> 1;
+                self.registers[x as usize] = vx << 1;
                 self.registers[0xf] = if msb_is_1 { 0x1 } else { 0x0 };
             }
             Op::SNE_VX_VY { x, y } => {
@@ -447,7 +414,9 @@ impl Interpreter {
                 for row_idx in min_row..=max_row {
                     let b = bytes_to_draw[row_idx - vy as usize];
                     for bit_idx in (0..8).rev() {
-                        let pixel_pos = row_idx * SCREEN_WIDTH + vx as usize + (7 - bit_idx);
+                        // TODO: should this wrap around?
+                        let pixel_pos = (row_idx * SCREEN_WIDTH + (vx as usize + (7 - bit_idx)))
+                            % self.pixels.len();
                         let old_value = self.pixels[pixel_pos];
                         let new_value = (b & 0x1 << bit_idx) > 0;
                         if old_value && new_value {
@@ -460,8 +429,9 @@ impl Interpreter {
                 if collision_flag {
                     // TODO: When does the overflow flag get set to false? Should I set to false if there's no overflow?
                     self.registers[0xf] = 0x1; // true
+                } else {
+                    self.registers[0xf] = 0x0; // false
                 }
-                self.screen.draw(self.pixels);
             }
             Op::SKP { x } => {
                 let is_key_pressed = self.keys[self.registers[x as usize] as usize];
@@ -477,7 +447,13 @@ impl Interpreter {
                 }
             }
             Op::LD_VX_DT { x } => self.registers[x as usize] = self.delay_timer,
-            Op::LD_VX_K { x } => self.registers[x as usize] = 0, // TODO: pause execution.. wait for keypress then store which key is pressed
+            Op::LD_VX_K { x } => {
+                if let Some(found) = self.keys.iter().position(|x| *x == true) {
+                    self.registers[x as usize] = found as u8;
+                } else {
+                    self.program_counter -= 2;
+                }
+            }
             Op::LD_DT_VX { x } => self.delay_timer = self.registers[x as usize],
             Op::LD_ST_VX { x } => self.sound_timer = self.registers[x as usize],
             Op::ADD_I_VX { x } => {
