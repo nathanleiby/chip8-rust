@@ -144,7 +144,7 @@ impl Interpreter {
     pub fn read_program_from_file(&mut self, p: &str) -> Result<(), Box<dyn Error>> {
         let mut file = File::open(p)?;
 
-        let mut buffer = [0 as u8; 4096 - 512];
+        let mut buffer = [0_u8; 4096 - 512];
         self._program_size = file.read(&mut buffer)?;
         for (idx, b) in buffer.iter().enumerate() {
             self.memory_map[PROGRAM_START + idx] = *b;
@@ -175,8 +175,8 @@ impl Interpreter {
     fn fetch_instruction_at(&self, pc: usize) -> u16 {
         let first = self.memory_map[pc];
         let second = self.memory_map[pc + 1];
-        let instruction = ((first as u16) << 8) | second as u16;
-        instruction
+        
+        ((first as u16) << 8) | second as u16
     }
 
     fn fetch(&mut self) -> u16 {
@@ -187,13 +187,13 @@ impl Interpreter {
     }
 
     fn decode(&self, instruction: u16) -> Op {
-        let first_nibble: u4 = (((0xF000 as u16) & instruction) >> 12) as u4;
-        let second_nibble = (((0x0F00 as u16) & instruction) >> 8) as u4;
-        let third_nibble = (((0x00F0 as u16) & instruction) >> 4) as u4;
-        let fourth_nibble = ((0x000F as u16) & instruction) as u4;
+        let first_nibble: u4 = ((0xF000_u16 & instruction) >> 12) as u4;
+        let second_nibble = ((0x0F00_u16 & instruction) >> 8) as u4;
+        let third_nibble = ((0x00F0_u16 & instruction) >> 4) as u4;
+        let fourth_nibble = (0x000F_u16 & instruction) as u4;
 
-        let twelve_bits: u12 = (0x0FFF as u16) & instruction;
-        let second_byte = ((0x00FF as u16) & instruction) as u8;
+        let twelve_bits: u12 = 0x0FFF_u16 & instruction;
+        let second_byte = (0x00FF_u16 & instruction) as u8;
         log::debug!(
             "instruction: {:#06x}, as nibbles: {:#03x} {:#03x} {:#03x} {:#03x}, second byte: {:#04x}, twelve_bits: {:#05x}",
             instruction, first_nibble, second_nibble, third_nibble, fourth_nibble, second_byte, twelve_bits
@@ -338,13 +338,13 @@ impl Interpreter {
             }
             Op::LD_VX_VY { x, y } => self.registers[x as usize] = self.registers[y as usize],
             Op::OR_VX_VY { x, y } => {
-                self.registers[x as usize] = self.registers[x as usize] | self.registers[y as usize]
+                self.registers[x as usize] |= self.registers[y as usize]
             }
             Op::AND_VX_VY { x, y } => {
-                self.registers[x as usize] = self.registers[x as usize] & self.registers[y as usize]
+                self.registers[x as usize] &= self.registers[y as usize]
             }
             Op::XOR_VX_VY { x, y } => {
-                self.registers[x as usize] = self.registers[x as usize] ^ self.registers[y as usize]
+                self.registers[x as usize] ^= self.registers[y as usize]
             }
             Op::ADD_VX_VY { x, y } => {
                 let vx = self.registers[x as usize];
@@ -448,7 +448,7 @@ impl Interpreter {
             }
             Op::LD_VX_DT { x } => self.registers[x as usize] = self.delay_timer,
             Op::LD_VX_K { x } => {
-                if let Some(found) = self.keys.iter().position(|x| *x == true) {
+                if let Some(found) = self.keys.iter().position(|x| *x) {
                     self.registers[x as usize] = found as u8;
                 } else {
                     self.program_counter -= 2;
@@ -457,7 +457,7 @@ impl Interpreter {
             Op::LD_DT_VX { x } => self.delay_timer = self.registers[x as usize],
             Op::LD_ST_VX { x } => self.sound_timer = self.registers[x as usize],
             Op::ADD_I_VX { x } => {
-                self.index_register = self.registers[x as usize] as u16 + self.index_register
+                self.index_register += self.registers[x as usize] as u16
             }
             Op::LD_F_VX { x } => {
                 self.index_register = FONT_START as u16 + self.registers[x as usize] as u16;
