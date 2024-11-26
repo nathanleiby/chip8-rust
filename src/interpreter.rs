@@ -5,50 +5,49 @@ use rand::Rng;
 use crate::font::FONT;
 
 // wrap u8 for now
-type u4 = u8;
+type U4 = u8;
 
 // wrap u16 for now
-type u12 = u16;
+type U8 = u16;
 
 #[derive(Debug)]
 enum Op {
-    // NYI, // Not yet implemented. For use during development of Chip8 Interpreter
-    CLS,
-    RET,
-    SYS { addr: u12 },
-    JP { addr: u12 },
-    CALL { addr: u12 },
-    SE { x: u4, byte: u8 },
-    SNE { x: u4, byte: u8 },
-    SE_VX_VY { x: u4, y: u4 },
-    LD { x: u4, byte: u8 },
-    ADD { x: u4, byte: u8 },
-    LD_VX_VY { x: u4, y: u4 },
-    OR_VX_VY { x: u4, y: u4 },
-    AND_VX_VY { x: u4, y: u4 },
-    XOR_VX_VY { x: u4, y: u4 },
-    ADD_VX_VY { x: u4, y: u4 },
-    SUB_VX_VY { x: u4, y: u4 },
-    SHR_VX_VY { x: u4, y: u4 },
-    SUBN_VX_VY { x: u4, y: u4 },
-    SHL_VX_VY { x: u4, y: u4 },
-    SNE_VX_VY { x: u4, y: u4 },
-    LD_I { addr: u12 },
-    JP_V0 { addr: u12 },
-    RND { x: u4, byte: u8 },
-    DRW { x: u4, y: u4, nibble: u4 },
-    SKP { x: u4 },
-    SKNP { x: u4 },
-    LD_VX_DT { x: u4 },
-    LD_VX_K { x: u4 },
-    LD_DT_VX { x: u4 },
-    LD_ST_VX { x: u4 },
-    ADD_I_VX { x: u4 },
-    LD_F_VX { x: u4 },
-    LD_B_VX { x: u4 },
-    LD_I_VX { x: u4 },
-    LD_VX_I { x: u4 },
-    INVALID,
+    Cls,
+    Ret,
+    Sys, // { addr: u12 },
+    Jp { addr: U8 },
+    Call { addr: U8 },
+    Se { x: U4, byte: u8 },
+    Sne { x: U4, byte: u8 },
+    SeVxVy { x: U4, y: U4 },
+    Ld { x: U4, byte: u8 },
+    Add { x: U4, byte: u8 },
+    LdVxVy { x: U4, y: U4 },
+    OrVxVy { x: U4, y: U4 },
+    AndVxVy { x: U4, y: U4 },
+    XorVxVy { x: U4, y: U4 },
+    AddVxVy { x: U4, y: U4 },
+    SubVxVy { x: U4, y: U4 },
+    ShrVxVy { x: U4 }, // y: N },
+    SubnVxVy { x: U4, y: U4 },
+    ShlVxVy { x: U4 }, //  y: N },
+    SneVxVy { x: U4, y: U4 },
+    LdI { addr: U8 },
+    JpV0 { addr: U8 },
+    Rnd { x: U4, byte: u8 },
+    Drw { x: U4, y: U4, nibble: U4 },
+    Skp { x: U4 },
+    Sknp { x: U4 },
+    LdVxDt { x: U4 },
+    LdVxK { x: U4 },
+    LdDtVx { x: U4 },
+    LdStVx { x: U4 },
+    AddIVx { x: U4 },
+    LdFVx { x: U4 },
+    LdBVx { x: U4 },
+    LdIVx { x: U4 },
+    LdVxI { x: U4 },
+    Invalid,
 }
 
 const MEMORY_SIZE: usize = 4096;
@@ -164,18 +163,10 @@ impl Interpreter {
         is_within_memory && is_in_program
     }
 
-    fn print_program(&self) {
-        for i in (PROGRAM_START..PROGRAM_START + self._program_size).step_by(2) {
-            let inst = self.fetch_instruction_at(i);
-            log::debug!("addr={}  inst={:#06x}  op={:?}", i, inst, self.decode(inst));
-        }
-        log::debug!("Program Size = {}", self._program_size);
-    }
-
     fn fetch_instruction_at(&self, pc: usize) -> u16 {
         let first = self.memory_map[pc];
         let second = self.memory_map[pc + 1];
-        
+
         ((first as u16) << 8) | second as u16
     }
 
@@ -187,12 +178,12 @@ impl Interpreter {
     }
 
     fn decode(&self, instruction: u16) -> Op {
-        let first_nibble: u4 = ((0xF000_u16 & instruction) >> 12) as u4;
-        let second_nibble = ((0x0F00_u16 & instruction) >> 8) as u4;
-        let third_nibble = ((0x00F0_u16 & instruction) >> 4) as u4;
-        let fourth_nibble = (0x000F_u16 & instruction) as u4;
+        let first_nibble: U4 = ((0xF000_u16 & instruction) >> 12) as U4;
+        let second_nibble = ((0x0F00_u16 & instruction) >> 8) as U4;
+        let third_nibble = ((0x00F0_u16 & instruction) >> 4) as U4;
+        let fourth_nibble = (0x000F_u16 & instruction) as U4;
 
-        let twelve_bits: u12 = 0x0FFF_u16 & instruction;
+        let twelve_bits: U8 = 0x0FFF_u16 & instruction;
         let second_byte = (0x00FF_u16 & instruction) as u8;
         log::debug!(
             "instruction: {:#06x}, as nibbles: {:#03x} {:#03x} {:#03x} {:#03x}, second byte: {:#04x}, twelve_bits: {:#05x}",
@@ -200,34 +191,34 @@ impl Interpreter {
         );
         match first_nibble {
             0 => match instruction {
-                0x00E0 => Op::CLS,
-                0x00EE => Op::RET,
-                _ => Op::SYS { addr: twelve_bits },
+                0x00E0 => Op::Cls,
+                0x00EE => Op::Ret,
+                _ => Op::Sys, // { addr: twelve_bits },
             },
-            1 => Op::JP { addr: twelve_bits },
-            2 => Op::CALL { addr: twelve_bits },
-            3 => Op::SE {
+            1 => Op::Jp { addr: twelve_bits },
+            2 => Op::Call { addr: twelve_bits },
+            3 => Op::Se {
                 x: second_nibble,
                 byte: second_byte,
             },
-            4 => Op::SNE {
+            4 => Op::Sne {
                 x: second_nibble,
                 byte: second_byte,
             },
             5 => {
                 if fourth_nibble != 0 {
-                    return Op::INVALID;
+                    return Op::Invalid;
                 }
-                Op::SE_VX_VY {
+                Op::SeVxVy {
                     x: second_nibble,
                     y: third_nibble,
                 }
             }
-            6 => Op::LD {
+            6 => Op::Ld {
                 x: second_nibble,
                 byte: second_byte,
             },
-            7 => Op::ADD {
+            7 => Op::Add {
                 x: second_nibble,
                 byte: second_byte,
             },
@@ -236,117 +227,111 @@ impl Interpreter {
                 let y = third_nibble;
 
                 match fourth_nibble {
-                    0 => Op::LD_VX_VY { x, y },
-                    1 => Op::OR_VX_VY { x, y },
-                    2 => Op::AND_VX_VY { x, y },
-                    3 => Op::XOR_VX_VY { x, y },
-                    4 => Op::ADD_VX_VY { x, y },
-                    5 => Op::SUB_VX_VY { x, y },
-                    6 => Op::SHR_VX_VY { x, y },
-                    7 => Op::SUBN_VX_VY { x, y },
-                    0xE => Op::SHL_VX_VY { x, y },
-                    _ => Op::INVALID,
+                    0 => Op::LdVxVy { x, y },
+                    1 => Op::OrVxVy { x, y },
+                    2 => Op::AndVxVy { x, y },
+                    3 => Op::XorVxVy { x, y },
+                    4 => Op::AddVxVy { x, y },
+                    5 => Op::SubVxVy { x, y },
+                    6 => Op::ShrVxVy { x },
+                    7 => Op::SubnVxVy { x, y },
+                    0xE => Op::ShlVxVy { x },
+                    _ => Op::Invalid,
                 }
             }
             9 => {
                 if fourth_nibble != 0 {
-                    return Op::INVALID;
+                    return Op::Invalid;
                 }
 
                 let x = second_nibble;
                 let y = third_nibble;
-                Op::SNE_VX_VY { x, y }
+                Op::SneVxVy { x, y }
             }
-            0xA => Op::LD_I { addr: twelve_bits },
-            0xB => Op::JP_V0 { addr: twelve_bits },
-            0xC => Op::RND {
+            0xA => Op::LdI { addr: twelve_bits },
+            0xB => Op::JpV0 { addr: twelve_bits },
+            0xC => Op::Rnd {
                 x: second_nibble,
                 byte: second_byte,
             },
-            0xD => Op::DRW {
+            0xD => Op::Drw {
                 x: second_nibble,
                 y: third_nibble,
                 nibble: fourth_nibble,
             },
             0xE => match second_byte {
-                0x9E => Op::SKP { x: second_nibble },
-                0xA1 => Op::SKNP { x: second_nibble },
-                _ => Op::INVALID,
+                0x9E => Op::Skp { x: second_nibble },
+                0xA1 => Op::Sknp { x: second_nibble },
+                _ => Op::Invalid,
             },
             0xF => match second_byte {
-                0x07 => Op::LD_VX_DT { x: second_nibble },
-                0x0A => Op::LD_VX_K { x: second_nibble },
-                0x15 => Op::LD_DT_VX { x: second_nibble },
-                0x18 => Op::LD_ST_VX { x: second_nibble },
-                0x1E => Op::ADD_I_VX { x: second_nibble },
-                0x29 => Op::LD_F_VX { x: second_nibble },
-                0x33 => Op::LD_B_VX { x: second_nibble },
-                0x55 => Op::LD_I_VX { x: second_nibble },
-                0x65 => Op::LD_VX_I { x: second_nibble },
-                _ => Op::INVALID,
+                0x07 => Op::LdVxDt { x: second_nibble },
+                0x0A => Op::LdVxK { x: second_nibble },
+                0x15 => Op::LdDtVx { x: second_nibble },
+                0x18 => Op::LdStVx { x: second_nibble },
+                0x1E => Op::AddIVx { x: second_nibble },
+                0x29 => Op::LdFVx { x: second_nibble },
+                0x33 => Op::LdBVx { x: second_nibble },
+                0x55 => Op::LdIVx { x: second_nibble },
+                0x65 => Op::LdVxI { x: second_nibble },
+                _ => Op::Invalid,
             },
-            _ => Op::INVALID,
+            _ => Op::Invalid,
         }
     }
 
     fn execute(&mut self, op: Op) -> Result<(), Box<dyn Error>> {
         match op {
-            Op::CLS => {
+            Op::Cls => {
                 for i in 0..self.pixels.len() {
                     self.pixels[i] = false;
                 }
             }
-            Op::RET => {
+            Op::Ret => {
                 self.program_counter = self.stack[self.stack_pointer as usize];
                 self.stack_pointer -= 1;
             }
-            Op::SYS { addr: _ } => (),
-            Op::JP { addr } => {
+            Op::Sys => (),
+            Op::Jp { addr } => {
                 log::debug!("jump to addr: {:#05x}", addr);
                 self.program_counter = addr;
             }
-            Op::CALL { addr } => {
+            Op::Call { addr } => {
                 self.stack_pointer += 1;
                 self.stack[self.stack_pointer as usize] = self.program_counter;
                 self.program_counter = addr;
             }
-            Op::SE { x, byte } => {
+            Op::Se { x, byte } => {
                 let vx = self.registers[x as usize];
                 if vx == byte {
                     self.program_counter += 2;
                 }
             }
-            Op::SNE { x, byte } => {
+            Op::Sne { x, byte } => {
                 let vx = self.registers[x as usize];
                 if vx != byte {
                     self.program_counter += 2;
                 }
             }
-            Op::SE_VX_VY { x, y } => {
+            Op::SeVxVy { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
                 if vx == vy {
                     self.program_counter += 2;
                 }
             }
-            Op::LD { x, byte } => self.registers[x as usize] = byte,
-            Op::ADD { x, byte } => {
+            Op::Ld { x, byte } => self.registers[x as usize] = byte,
+            Op::Add { x, byte } => {
                 let vx = self.registers[x as usize];
                 let (total, _) = vx.overflowing_add(byte);
                 // NOTE: This instruction does NOT set the overflow register (vf)
                 self.registers[x as usize] = total;
             }
-            Op::LD_VX_VY { x, y } => self.registers[x as usize] = self.registers[y as usize],
-            Op::OR_VX_VY { x, y } => {
-                self.registers[x as usize] |= self.registers[y as usize]
-            }
-            Op::AND_VX_VY { x, y } => {
-                self.registers[x as usize] &= self.registers[y as usize]
-            }
-            Op::XOR_VX_VY { x, y } => {
-                self.registers[x as usize] ^= self.registers[y as usize]
-            }
-            Op::ADD_VX_VY { x, y } => {
+            Op::LdVxVy { x, y } => self.registers[x as usize] = self.registers[y as usize],
+            Op::OrVxVy { x, y } => self.registers[x as usize] |= self.registers[y as usize],
+            Op::AndVxVy { x, y } => self.registers[x as usize] &= self.registers[y as usize],
+            Op::XorVxVy { x, y } => self.registers[x as usize] ^= self.registers[y as usize],
+            Op::AddVxVy { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
                 let (total, overflow) = vx.overflowing_add(vy);
@@ -354,7 +339,7 @@ impl Interpreter {
                 self.registers[0xf] = overflow as u8;
                 self.registers[x as usize] = total;
             }
-            Op::SUB_VX_VY { x, y } => {
+            Op::SubVxVy { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
 
@@ -362,13 +347,13 @@ impl Interpreter {
                 self.registers[x as usize] = total;
                 self.registers[0xf] = !overflow as u8;
             }
-            Op::SHR_VX_VY { x, y: _ } => {
+            Op::ShrVxVy { x } => {
                 let vx = self.registers[x as usize];
                 let lsb_is_1 = (vx & 0b00000001).count_ones() == 1;
                 self.registers[x as usize] = vx >> 1;
                 self.registers[0xf] = if lsb_is_1 { 0x1 } else { 0x0 };
             }
-            Op::SUBN_VX_VY { x, y } => {
+            Op::SubnVxVy { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
 
@@ -376,29 +361,29 @@ impl Interpreter {
                 self.registers[x as usize] = total;
                 self.registers[0xf] = !overflow as u8;
             }
-            Op::SHL_VX_VY { x, y: _ } => {
+            Op::ShlVxVy { x } => {
                 let vx = self.registers[x as usize];
                 let msb_is_1 = (vx & 0b10000000).count_ones() == 1;
                 self.registers[x as usize] = vx << 1;
                 self.registers[0xf] = if msb_is_1 { 0x1 } else { 0x0 };
             }
-            Op::SNE_VX_VY { x, y } => {
+            Op::SneVxVy { x, y } => {
                 if self.registers[x as usize] != self.registers[y as usize] {
                     self.program_counter += 2;
                 }
             }
-            Op::LD_I { addr } => {
+            Op::LdI { addr } => {
                 self.index_register = addr;
             }
-            Op::JP_V0 { addr } => {
+            Op::JpV0 { addr } => {
                 self.program_counter = addr + self.registers[0] as u16;
             }
-            Op::RND { x, byte } => {
+            Op::Rnd { x, byte } => {
                 let mut rng = rand::thread_rng();
                 let r = rng.gen::<u8>();
                 self.registers[x as usize] = r & byte;
             }
-            Op::DRW { x, y, nibble } => {
+            Op::Drw { x, y, nibble } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
 
@@ -433,56 +418,54 @@ impl Interpreter {
                     self.registers[0xf] = 0x0; // false
                 }
             }
-            Op::SKP { x } => {
+            Op::Skp { x } => {
                 let is_key_pressed = self.keys[self.registers[x as usize] as usize];
                 if is_key_pressed {
                     self.program_counter += 2;
                 }
             }
-            Op::SKNP { x } => {
+            Op::Sknp { x } => {
                 // skip if key not pressed
                 let is_key_pressed = self.keys[self.registers[x as usize] as usize];
                 if !is_key_pressed {
                     self.program_counter += 2;
                 }
             }
-            Op::LD_VX_DT { x } => self.registers[x as usize] = self.delay_timer,
-            Op::LD_VX_K { x } => {
+            Op::LdVxDt { x } => self.registers[x as usize] = self.delay_timer,
+            Op::LdVxK { x } => {
                 if let Some(found) = self.keys.iter().position(|x| *x) {
                     self.registers[x as usize] = found as u8;
                 } else {
                     self.program_counter -= 2;
                 }
             }
-            Op::LD_DT_VX { x } => self.delay_timer = self.registers[x as usize],
-            Op::LD_ST_VX { x } => self.sound_timer = self.registers[x as usize],
-            Op::ADD_I_VX { x } => {
-                self.index_register += self.registers[x as usize] as u16
-            }
-            Op::LD_F_VX { x } => {
+            Op::LdDtVx { x } => self.delay_timer = self.registers[x as usize],
+            Op::LdStVx { x } => self.sound_timer = self.registers[x as usize],
+            Op::AddIVx { x } => self.index_register += self.registers[x as usize] as u16,
+            Op::LdFVx { x } => {
                 self.index_register = FONT_START as u16 + self.registers[x as usize] as u16;
             }
-            Op::LD_B_VX { x } => {
+            Op::LdBVx { x } => {
                 let vx = self.registers[x as usize];
                 self.memory_map[self.index_register as usize] = (vx / 100) % 10;
                 self.memory_map[self.index_register as usize + 1] = (vx / 10) % 10;
                 self.memory_map[self.index_register as usize + 2] = vx % 10;
             }
-            Op::LD_I_VX { x } => {
+            Op::LdIVx { x } => {
                 for idx in 0..=x {
                     self.memory_map[(self.index_register + idx as u16) as usize] =
                         self.registers[idx as usize];
                 }
                 self.index_register = self.index_register + x as u16 + 1;
             }
-            Op::LD_VX_I { x } => {
+            Op::LdVxI { x } => {
                 for idx in 0..=x {
                     self.registers[idx as usize] =
                         self.memory_map[(self.index_register + idx as u16) as usize];
                 }
                 self.index_register = self.index_register + x as u16 + 1;
             }
-            Op::INVALID => todo!("this will aways fail"),
+            Op::Invalid => todo!("this will aways fail"),
         }
 
         Ok(())
