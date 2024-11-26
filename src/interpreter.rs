@@ -14,14 +14,14 @@ type U8 = u16;
 enum Op {
     Cls,
     Ret,
-    Sys, // { addr: u12 },
-    Jp { addr: U8 },
-    Call { addr: U8 },
-    Se { x: U4, byte: u8 },
-    Sne { x: U4, byte: u8 },
+    Sys,
+    Jp { nnn: U8 },
+    Call { nnn: U8 },
+    Se { x: U4, nn: u8 },
+    Sne { x: U4, nn: u8 },
     SeVxVy { x: U4, y: U4 },
-    Ld { x: U4, byte: u8 },
-    Add { x: U4, byte: u8 },
+    Ld { x: U4, nn: u8 },
+    Add { x: U4, nn: u8 },
     LdVxVy { x: U4, y: U4 },
     OrVxVy { x: U4, y: U4 },
     AndVxVy { x: U4, y: U4 },
@@ -32,10 +32,10 @@ enum Op {
     SubnVxVy { x: U4, y: U4 },
     ShlVxVy { x: U4 }, //  y: N },
     SneVxVy { x: U4, y: U4 },
-    LdI { addr: U8 },
-    JpV0 { addr: U8 },
-    Rnd { x: U4, byte: u8 },
-    Drw { x: U4, y: U4, nibble: U4 },
+    LdI { nnn: U8 },
+    JpV0 { nnn: U8 },
+    Rnd { x: U4, nn: u8 },
+    Drw { x: U4, y: U4, n: U4 },
     Skp { x: U4 },
     Sknp { x: U4 },
     LdVxDt { x: U4 },
@@ -179,54 +179,39 @@ impl Interpreter {
 
     fn decode(&self, instruction: u16) -> Op {
         let first_nibble: U4 = ((0xF000_u16 & instruction) >> 12) as U4;
-        let second_nibble = ((0x0F00_u16 & instruction) >> 8) as U4;
-        let third_nibble = ((0x00F0_u16 & instruction) >> 4) as U4;
-        let fourth_nibble = (0x000F_u16 & instruction) as U4;
+        let x = ((0x0F00_u16 & instruction) >> 8) as U4;
+        let y = ((0x00F0_u16 & instruction) >> 4) as U4;
+        let n = (0x000F_u16 & instruction) as U4;
 
-        let twelve_bits: U8 = 0x0FFF_u16 & instruction;
-        let second_byte = (0x00FF_u16 & instruction) as u8;
+        let nnn: U8 = 0x0FFF_u16 & instruction;
+        let nn = (0x00FF_u16 & instruction) as u8;
         log::debug!(
-            "instruction: {:#06x}, as nibbles: {:#03x} {:#03x} {:#03x} {:#03x}, second byte: {:#04x}, twelve_bits: {:#05x}",
-            instruction, first_nibble, second_nibble, third_nibble, fourth_nibble, second_byte, twelve_bits
+            "instruction: {:#06x}, as nibbles: {:#03x} {:#03x} {:#03x} {:#03x}, nn: {:#04x}, nnn: {:#05x}",
+            instruction, first_nibble, x, y, n, nn, nnn
         );
         match first_nibble {
             0 => match instruction {
                 0x00E0 => Op::Cls,
                 0x00EE => Op::Ret,
-                _ => Op::Sys, // { addr: twelve_bits },
+                _ => Op::Sys,
             },
-            1 => Op::Jp { addr: twelve_bits },
-            2 => Op::Call { addr: twelve_bits },
-            3 => Op::Se {
-                x: second_nibble,
-                byte: second_byte,
-            },
-            4 => Op::Sne {
-                x: second_nibble,
-                byte: second_byte,
-            },
+            1 => Op::Jp { nnn },
+            2 => Op::Call { nnn },
+            3 => Op::Se { x, nn },
+            4 => Op::Sne { x, nn },
             5 => {
-                if fourth_nibble != 0 {
+                if n != 0 {
                     return Op::Invalid;
                 }
-                Op::SeVxVy {
-                    x: second_nibble,
-                    y: third_nibble,
-                }
+                Op::SeVxVy { x, y }
             }
-            6 => Op::Ld {
-                x: second_nibble,
-                byte: second_byte,
-            },
-            7 => Op::Add {
-                x: second_nibble,
-                byte: second_byte,
-            },
+            6 => Op::Ld { x, nn },
+            7 => Op::Add { x, nn },
             8 => {
-                let x = second_nibble;
-                let y = third_nibble;
+                let x = x;
+                let y = y;
 
-                match fourth_nibble {
+                match n {
                     0 => Op::LdVxVy { x, y },
                     1 => Op::OrVxVy { x, y },
                     2 => Op::AndVxVy { x, y },
@@ -240,40 +225,33 @@ impl Interpreter {
                 }
             }
             9 => {
-                if fourth_nibble != 0 {
+                if n != 0 {
                     return Op::Invalid;
                 }
 
-                let x = second_nibble;
-                let y = third_nibble;
+                let x = x;
+                let y = y;
                 Op::SneVxVy { x, y }
             }
-            0xA => Op::LdI { addr: twelve_bits },
-            0xB => Op::JpV0 { addr: twelve_bits },
-            0xC => Op::Rnd {
-                x: second_nibble,
-                byte: second_byte,
-            },
-            0xD => Op::Drw {
-                x: second_nibble,
-                y: third_nibble,
-                nibble: fourth_nibble,
-            },
-            0xE => match second_byte {
-                0x9E => Op::Skp { x: second_nibble },
-                0xA1 => Op::Sknp { x: second_nibble },
+            0xA => Op::LdI { nnn },
+            0xB => Op::JpV0 { nnn },
+            0xC => Op::Rnd { x, nn },
+            0xD => Op::Drw { x, y, n },
+            0xE => match nn {
+                0x9E => Op::Skp { x },
+                0xA1 => Op::Sknp { x },
                 _ => Op::Invalid,
             },
-            0xF => match second_byte {
-                0x07 => Op::LdVxDt { x: second_nibble },
-                0x0A => Op::LdVxK { x: second_nibble },
-                0x15 => Op::LdDtVx { x: second_nibble },
-                0x18 => Op::LdStVx { x: second_nibble },
-                0x1E => Op::AddIVx { x: second_nibble },
-                0x29 => Op::LdFVx { x: second_nibble },
-                0x33 => Op::LdBVx { x: second_nibble },
-                0x55 => Op::LdIVx { x: second_nibble },
-                0x65 => Op::LdVxI { x: second_nibble },
+            0xF => match nn {
+                0x07 => Op::LdVxDt { x },
+                0x0A => Op::LdVxK { x },
+                0x15 => Op::LdDtVx { x },
+                0x18 => Op::LdStVx { x },
+                0x1E => Op::AddIVx { x },
+                0x29 => Op::LdFVx { x },
+                0x33 => Op::LdBVx { x },
+                0x55 => Op::LdIVx { x },
+                0x65 => Op::LdVxI { x },
                 _ => Op::Invalid,
             },
             _ => Op::Invalid,
@@ -292,22 +270,21 @@ impl Interpreter {
                 self.stack_pointer -= 1;
             }
             Op::Sys => (),
-            Op::Jp { addr } => {
-                log::debug!("jump to addr: {:#05x}", addr);
+            Op::Jp { nnn: addr } => {
                 self.program_counter = addr;
             }
-            Op::Call { addr } => {
+            Op::Call { nnn: addr } => {
                 self.stack_pointer += 1;
                 self.stack[self.stack_pointer as usize] = self.program_counter;
                 self.program_counter = addr;
             }
-            Op::Se { x, byte } => {
+            Op::Se { x, nn: byte } => {
                 let vx = self.registers[x as usize];
                 if vx == byte {
                     self.program_counter += 2;
                 }
             }
-            Op::Sne { x, byte } => {
+            Op::Sne { x, nn: byte } => {
                 let vx = self.registers[x as usize];
                 if vx != byte {
                     self.program_counter += 2;
@@ -320,8 +297,8 @@ impl Interpreter {
                     self.program_counter += 2;
                 }
             }
-            Op::Ld { x, byte } => self.registers[x as usize] = byte,
-            Op::Add { x, byte } => {
+            Op::Ld { x, nn: byte } => self.registers[x as usize] = byte,
+            Op::Add { x, nn: byte } => {
                 let vx = self.registers[x as usize];
                 let (total, _) = vx.overflowing_add(byte);
                 // NOTE: This instruction does NOT set the overflow register (vf)
@@ -372,18 +349,18 @@ impl Interpreter {
                     self.program_counter += 2;
                 }
             }
-            Op::LdI { addr } => {
+            Op::LdI { nnn: addr } => {
                 self.index_register = addr;
             }
-            Op::JpV0 { addr } => {
+            Op::JpV0 { nnn: addr } => {
                 self.program_counter = addr + self.registers[0] as u16;
             }
-            Op::Rnd { x, byte } => {
+            Op::Rnd { x, nn: byte } => {
                 let mut rng = rand::thread_rng();
                 let r = rng.gen::<u8>();
                 self.registers[x as usize] = r & byte;
             }
-            Op::Drw { x, y, nibble } => {
+            Op::Drw { x, y, n: nibble } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
 
