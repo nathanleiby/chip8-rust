@@ -11,4 +11,3 @@ macroquad = { version = "0.3.26", default-features = false }
 env_logger = "0.11.5"
 log = "0.4.22"
 wasm-logger = "0.2.0"
-include_dir = "0.7.4"

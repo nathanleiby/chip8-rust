@@ -153,6 +153,11 @@ impl Interpreter {
         Ok(())
     }
 
+    pub fn load_program(&mut self, buffer: &[u8]) {
+        self._program_size = buffer.len();
+        self.memory_map[PROGRAM_START..PROGRAM_START + self._program_size].copy_from_slice(buffer);
+    }
+
     pub fn pixels(&self) -> Pixels {
         self.pixels
     }
