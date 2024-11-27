@@ -91,9 +91,20 @@ fn update_display(interpreter: &Interpreter, pixel_brightness: &mut [f32; 64 * 3
     }
 }
 
+use include_dir::{include_dir, Dir};
+
+const ROMS_DIR: Dir = include_dir!("./roms");
+
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Box<dyn Error>> {
+    #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
+    #[cfg(target_arch = "wasm32")]
+    wasm_logger::init(wasm_logger::Config::default());
+
+    // TODO: attach a rom, like pong?
+    // TODO: allow swapping among roms?
+    let roms = ROMS_DIR.files().map(|f| (f.path(), f.contents()));
 
     // read program
     let rom = std::env::args().nth(1).expect(USAGE);

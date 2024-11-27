@@ -1,7 +1,5 @@
 use std::{error::Error, fs::File, io::Read};
 
-use rand::Rng;
-
 use crate::font::FONT;
 
 // wrap u8 for now
@@ -359,8 +357,8 @@ impl Interpreter {
                 self.program_counter = addr + self.registers[0] as u16;
             }
             Op::Rnd { x, nn: byte } => {
-                let mut rng = rand::thread_rng();
-                let r = rng.gen::<u8>();
+                // we use macroquad's rand for cross-platform (esp WASM) support
+                let r = macroquad::rand::gen_range(0, u8::MAX);
                 self.registers[x as usize] = r & byte;
             }
             Op::Drw { x, y, n: nibble } => {
