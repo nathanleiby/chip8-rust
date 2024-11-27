@@ -93,7 +93,7 @@ fn update_display(interpreter: &Interpreter, pixel_brightness: &mut [f32; 64 * 3
 
 use include_dir::{include_dir, Dir};
 
-const ROMS_DIR: Dir = include_dir!("./roms");
+const ROMS_DIR: Dir = include_dir!("./assets/roms");
 
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Box<dyn Error>> {
