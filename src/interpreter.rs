@@ -82,6 +82,7 @@ pub struct Interpreter {
     /// "hardware" abstractions
     /// input: for the keyboard. represents whether key i is pressed
     keys: [bool; 16],
+    key_down_ld_vx_k: Option<u8>, // track the key we are waiting to release
     pixels: Pixels,
 }
 
@@ -115,6 +116,7 @@ impl Interpreter {
             pixels: [false; 64 * 32],
 
             keys: [false; 16],
+            key_down_ld_vx_k: None,
         }
     }
 
@@ -433,9 +435,19 @@ impl Interpreter {
             }
             Op::LdVxDt { x } => self.registers[x as usize] = self.delay_timer,
             Op::LdVxK { x } => {
-                if let Some(found) = self.keys.iter().position(|x| *x) {
-                    self.registers[x as usize] = found as u8;
+                // if a key was down before...
+                if let Some(key_idx) = self.key_down_ld_vx_k {
+                    // but now is up...
+                    if !self.keys[key_idx as usize] {
+                        self.registers[x as usize] = key_idx as u8;
+                        self.key_down_ld_vx_k = None;
+                    }
                 } else {
+                    // check if a key is down, then record it
+                    if let Some(found) = self.keys.iter().position(|x| *x) {
+                        self.key_down_ld_vx_k = Some(found as u8);
+                    }
+                    // keep waiting... for key press or key release
                     self.program_counter -= 2;
                 }
             }
