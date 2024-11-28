@@ -319,8 +319,8 @@ impl Interpreter {
                 let vy = self.registers[y as usize];
                 let (total, overflow) = vx.overflowing_add(vy);
 
-                self.registers[0xf] = overflow as u8;
                 self.registers[x as usize] = total;
+                self.registers[0xf] = overflow as u8;
             }
             Op::SubVxVy { x, y } => {
                 let vx = self.registers[x as usize];
@@ -452,6 +452,28 @@ impl Interpreter {
             }
             Op::Invalid => todo!("this will aways fail"),
         }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_addvxvy_carry_bit_should_be_set_last() -> Result<(), Box<dyn Error>> {
+        let mut vm = Interpreter::new();
+
+        // 2+2 = 4, but should be overriden to 0 in flag Vf
+        vm.registers[0xf] = 2;
+        vm.execute(Op::AddVxVy { x: 0xf, y: 0xf })?;
+        assert_eq!(vm.registers[0xf], 0);
+
+        // 0xff + 0xff = 0xfe with wrapping overflow, but should be overriden to 1 in flag Vf
+        vm.registers[0xf] = 0xff;
+        vm.execute(Op::AddVxVy { x: 0xf, y: 0xf })?;
+        assert_eq!(vm.registers[0xf], 1);
 
         Ok(())
     }

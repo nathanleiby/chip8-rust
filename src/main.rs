@@ -1,4 +1,6 @@
+use std::env;
 use std::error::Error;
+use std::io::Read;
 
 use interpreter::Interpreter;
 
@@ -95,15 +97,23 @@ const PONG_ROM: &[u8; 246] = include_bytes!(".././assets/roms/PONG");
 async fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
+
+    let mut interpreter = Interpreter::new();
+    // if a rom is given, load that. Else load PONG
+    let rom = std::env::args().nth(1);
+    if let Some(rom) = rom {
+        // read file
+        let mut rom_file = std::fs::File::open(rom)?;
+        let mut rom_bytes = Vec::new();
+        rom_file.read_to_end(&mut rom_bytes)?;
+        interpreter.load_program(&rom_bytes);
+    } else {
+        interpreter.load_program(PONG_ROM);
+    }
+
     // let rom = std::env::args().nth(1).expect(USAGE);
     #[cfg(target_arch = "wasm32")]
     wasm_logger::init(wasm_logger::Config::default());
-
-    // read program
-
-    let mut interpreter = Interpreter::new();
-    // TODO: allow swapping among roms
-    interpreter.load_program(PONG_ROM);
 
     // let mut should_step = false;
 
