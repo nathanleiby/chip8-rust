@@ -311,9 +311,18 @@ impl Interpreter {
                 self.registers[x as usize] = total;
             }
             Op::LdVxVy { x, y } => self.registers[x as usize] = self.registers[y as usize],
-            Op::OrVxVy { x, y } => self.registers[x as usize] |= self.registers[y as usize],
-            Op::AndVxVy { x, y } => self.registers[x as usize] &= self.registers[y as usize],
-            Op::XorVxVy { x, y } => self.registers[x as usize] ^= self.registers[y as usize],
+            Op::OrVxVy { x, y } => {
+                self.registers[x as usize] |= self.registers[y as usize];
+                self.registers[0xf] = 0;
+            }
+            Op::AndVxVy { x, y } => {
+                self.registers[x as usize] &= self.registers[y as usize];
+                self.registers[0xf] = 0;
+            }
+            Op::XorVxVy { x, y } => {
+                self.registers[x as usize] ^= self.registers[y as usize];
+                self.registers[0xf] = 0;
+            }
             Op::AddVxVy { x, y } => {
                 let vx = self.registers[x as usize];
                 let vy = self.registers[y as usize];
@@ -474,6 +483,25 @@ mod tests {
         vm.registers[0xf] = 0xff;
         vm.execute(Op::AddVxVy { x: 0xf, y: 0xf })?;
         assert_eq!(vm.registers[0xf], 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_some_ops_should_reset_vf() -> Result<(), Box<dyn Error>> {
+        let mut vm = Interpreter::new();
+
+        vm.registers[0xf] = 1;
+        vm.execute(Op::AndVxVy { x: 0, y: 1 })?;
+        assert_eq!(vm.registers[0xf], 0);
+
+        vm.registers[0xf] = 1;
+        vm.execute(Op::OrVxVy { x: 0, y: 1 })?;
+        assert_eq!(vm.registers[0xf], 0);
+
+        vm.registers[0xf] = 1;
+        vm.execute(Op::XorVxVy { x: 0, y: 1 })?;
+        assert_eq!(vm.registers[0xf], 0);
 
         Ok(())
     }
