@@ -151,7 +151,10 @@ impl Interpreter {
         }
     }
 
-    /// Reads a program from a file and writes it into the memory_map
+    pub fn should_play_sound(&self) -> bool {
+        self.sound_timer > 0
+    }
+
     pub fn read_program_from_file(&mut self, p: &str) -> Result<(), Box<dyn Error>> {
         let mut file = File::open(p)?;
 

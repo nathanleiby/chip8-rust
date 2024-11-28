@@ -6,6 +6,7 @@ use interpreter::Interpreter;
 mod font;
 mod interpreter;
 
+use macroquad::audio::{load_sound, play_sound, set_sound_volume, PlaySoundParams};
 use macroquad::prelude::*;
 
 use macroquad::{
@@ -30,7 +31,7 @@ fn conf() -> Conf {
     }
 }
 
-const INSTRUCTIONS_PER_LOOP: usize = 10;
+const INSTRUCTIONS_PER_LOOP: usize = 5;
 
 fn capture_keyboard_input(interpreter: &mut Interpreter) {
     for (idx, k) in [
@@ -118,6 +119,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // TODO: sound?
     let mut pixel_brightness: [f32; 64 * 32] = [0.; 64 * 32];
+    let sound = load_sound("assets/sounds/beep.ogg").await?;
+    play_sound(
+        sound,
+        PlaySoundParams {
+            looped: true,
+            volume: 0.,
+        },
+    );
 
     loop {
         if is_key_down(KeyCode::LeftShift) && is_key_released(KeyCode::Escape) {
@@ -129,17 +138,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         //     should_step = true;
         // }
 
-        // expose current state (visuals, audio)
-        update_display(&interpreter, &mut pixel_brightness);
-        // TODO: play sound, if appropriate
-
         // capture changes
         capture_keyboard_input(&mut interpreter);
         interpreter.decrement_timers(); // assumes game loop is running at approx 60fps
 
+        // step forward and rewndcurrent state (visuals, audio)
         for _ in 0..INSTRUCTIONS_PER_LOOP {
             // if should_step {
             interpreter.step()?;
+            if interpreter.should_play_sound() {
+                set_sound_volume(sound, 1.);
+            } else {
+                set_sound_volume(sound, 0.);
+            }
+            update_display(&interpreter, &mut pixel_brightness);
             // should_step = false;
             // }
         }
