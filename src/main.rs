@@ -1,4 +1,3 @@
-use std::env;
 use std::error::Error;
 use std::io::Read;
 
@@ -31,7 +30,7 @@ fn conf() -> Conf {
     }
 }
 
-const INSTRUCTIONS_PER_LOOP: usize = 5;
+const INSTRUCTIONS_PER_LOOP: usize = 10;
 
 fn capture_keyboard_input(interpreter: &mut Interpreter) {
     for (idx, k) in [

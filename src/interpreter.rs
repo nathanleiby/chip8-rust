@@ -26,9 +26,9 @@ enum Op {
     XorVxVy { x: U4, y: U4 },
     AddVxVy { x: U4, y: U4 },
     SubVxVy { x: U4, y: U4 },
-    ShrVxVy { x: U4 }, // y: N },
+    ShrVxVy { x: U4, y: U4 },
     SubnVxVy { x: U4, y: U4 },
-    ShlVxVy { x: U4 }, //  y: N },
+    ShlVxVy { x: U4, y: U4 },
     SneVxVy { x: U4, y: U4 },
     LdI { nnn: U8 },
     JpV0 { nnn: U8 },
@@ -47,6 +47,15 @@ enum Op {
     LdVxI { x: U4 },
     Invalid,
 }
+
+#[derive(PartialEq, Eq, Debug)]
+enum Chip8Variant {
+    OriginalCosmacVip,
+    // Chip48,
+    // SuperChip,
+}
+
+const VARIANT: Chip8Variant = Chip8Variant::OriginalCosmacVip;
 
 const MEMORY_SIZE: usize = 4096;
 
@@ -213,30 +222,23 @@ impl Interpreter {
             }
             6 => Op::Ld { x, nn },
             7 => Op::Add { x, nn },
-            8 => {
-                let x = x;
-                let y = y;
-
-                match n {
-                    0 => Op::LdVxVy { x, y },
-                    1 => Op::OrVxVy { x, y },
-                    2 => Op::AndVxVy { x, y },
-                    3 => Op::XorVxVy { x, y },
-                    4 => Op::AddVxVy { x, y },
-                    5 => Op::SubVxVy { x, y },
-                    6 => Op::ShrVxVy { x },
-                    7 => Op::SubnVxVy { x, y },
-                    0xE => Op::ShlVxVy { x },
-                    _ => Op::Invalid,
-                }
-            }
+            8 => match n {
+                0 => Op::LdVxVy { x, y },
+                1 => Op::OrVxVy { x, y },
+                2 => Op::AndVxVy { x, y },
+                3 => Op::XorVxVy { x, y },
+                4 => Op::AddVxVy { x, y },
+                5 => Op::SubVxVy { x, y },
+                6 => Op::ShrVxVy { x, y },
+                7 => Op::SubnVxVy { x, y },
+                0xE => Op::ShlVxVy { x, y },
+                _ => Op::Invalid,
+            },
             9 => {
                 if n != 0 {
                     return Op::Invalid;
                 }
 
-                let x = x;
-                let y = y;
                 Op::SneVxVy { x, y }
             }
             0xA => Op::LdI { nnn },
@@ -339,7 +341,10 @@ impl Interpreter {
                 self.registers[x as usize] = total;
                 self.registers[0xf] = !overflow as u8;
             }
-            Op::ShrVxVy { x } => {
+            Op::ShrVxVy { x, y } => {
+                if VARIANT == Chip8Variant::OriginalCosmacVip {
+                    self.registers[x as usize] = self.registers[y as usize];
+                }
                 let vx = self.registers[x as usize];
                 let lsb_is_1 = (vx & 0b00000001).count_ones() == 1;
                 self.registers[x as usize] = vx >> 1;
@@ -353,7 +358,10 @@ impl Interpreter {
                 self.registers[x as usize] = total;
                 self.registers[0xf] = !overflow as u8;
             }
-            Op::ShlVxVy { x } => {
+            Op::ShlVxVy { x, y } => {
+                if VARIANT == Chip8Variant::OriginalCosmacVip {
+                    self.registers[x as usize] = self.registers[y as usize];
+                }
                 let vx = self.registers[x as usize];
                 let msb_is_1 = (vx & 0b10000000).count_ones() == 1;
                 self.registers[x as usize] = vx << 1;
